@@ -19,7 +19,19 @@ format="SOL"           # amounts shown in 'SOL' instead of lamports
 now=$(date +%s%N)      # date in influx format
 timezone=""            # time zone for epoch ends metric
 ip_address=$(wget -q -4 -O- http://icanhazip.com) 
+cpu=$(lscpu | grep "Model name:" | cut -c 12- |  sed 's/^ *//g')
+current_epoch=$(solana epoch)
 #####  END CONFIG  ##################################################################################################
+
+################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
+networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
+networkrpcPort=$(ps aux | grep solana-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
+if [ $networkrpcURL = https://api.testnet.solana.com ]; then network=1 networkname=testnet;
+elif [ $networkrpcURL = https://api.mainnet-beta.solana.com ]; then network=2 networkname=mainnet;
+elif [ $networkrpcURL = https://api.devnet.solana.com ]; then network=3 networkname=devnet;
+elif [ $networkrpcURL = http://localhost:$networkrpcPort ]; then network=0 networkname=localhost;
+fi	
+######################################################################################################
 
 if [ -n  "$binDir" ]; then
    cli="${binDir}/solana"
@@ -31,7 +43,7 @@ fi
 
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep solana-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
-   if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4,ip_address=\"$ip_address\", $now"; exit 1; fi
+   if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4, voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
    rpcURL="http://127.0.0.1:$rpcPort"
 fi
 
@@ -49,15 +61,7 @@ solanaPrice=$(curl -s 'https://api.binance.com/api/v3/ticker/price?symbol=SOLUSD
 openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
 validatorCheck=$($cli validators --url $rpcURL)
 
-################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
-networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
-networkrpcPort=$(ps aux | grep solana-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
-if [ $networkrpcURL = https://api.testnet.solana.com ]; then network=1 networkname=testnet;
-elif [ $networkrpcURL = https://api.mainnet-beta.solana.com ]; then network=2 networkname=mainnet;
-elif [ $networkrpcURL = https://api.devnet.solana.com ]; then network=3 networkname=devnet;
-elif [ $networkrpcURL = http://localhost:$networkrpcPort ]; then network=0 networkname=localhost;
-fi	
-######################################################################################################
+
 
 if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator not found in set"; exit 1; fi
     blockProduction=$($cli block-production --url $rpcURL --output json-compact 2>&- | grep -v Note:)
@@ -138,12 +142,12 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            epochEnds=$(echo \"$epochEnds\")
            voteElapsed=$(echo "scale=4; $pctEpochElapsed / 100 * 432000" | bc)
            pctVote=$(echo "scale=4; $validatorCreditsCurrent/$voteElapsed * 100" | bc)
-           logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,pctVote=$pctVote,voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\""
+           logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,pctVote=$pctVote,voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\""
         fi
         logentry="nodemonitor,pubkey=$identityPubkey status=$status,$logentry $now"
     else
         status=2
-        logentry="nodemonitor,pubkey=$identityPubkey status=$status,voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\" $now"
+        logentry="nodemonitor,pubkey=$identityPubkey status=$status,voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"
     fi
 	
 
