@@ -25,6 +25,8 @@ current_epoch=$(solana epoch)
 
 ################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
 networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
+if [ "$networkrpcURL" == "" ]; then networkrpcURL=$(cat /root/.config/solana/cli/config.yml | grep json_rpc_url | awk '{ print $2 }')
+fi
 networkrpcPort=$(ps aux | grep solana-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
 if [ $networkrpcURL = https://api.testnet.solana.com ]; then network=1 networkname=testnet;
 elif [ $networkrpcURL = https://api.mainnet-beta.solana.com ]; then network=2 networkname=mainnet;
