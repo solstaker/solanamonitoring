@@ -27,7 +27,7 @@ current_epoch=$(solana epoch)
 networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
 if [ "$networkrpcURL" == "" ]; then networkrpcURL=$(cat /root/.config/solana/cli/config.yml | grep json_rpc_url | awk '{ print $2 }')
 fi
-networkrpcPort=$(ps aux | grep solana-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
+networkrpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
 if [ $networkrpcURL = https://api.testnet.solana.com ]; then network=1 networkname=testnet;
 elif [ $networkrpcURL = https://api.mainnet-beta.solana.com ]; then network=2 networkname=mainnet;
 elif [ $networkrpcURL = https://api.devnet.solana.com ]; then network=3 networkname=devnet;
@@ -44,12 +44,12 @@ else
 fi
 
 if [ -z $rpcURL ]; then
-   rpcPort=$(ps aux | grep solana-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
+   rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
    if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
    rpcURL="http://127.0.0.1:$rpcPort"
 fi
 
-noVoting=$(ps aux | grep solana-validator | grep -c "\-\-no\-voting")
+noVoting=$(ps aux | grep agave-validator | grep -c "\-\-no\-voting")
 if [ "$noVoting" -eq 0 ]; then
    if [ -z $identityPubkey ]; then identityPubkey=$($cli address --url $rpcURL); fi
    if [ -z $identityPubkey ]; then echo "auto-detection failed, please configure the identityPubkey in the script if not done"; exit 1; fi
@@ -142,7 +142,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            epochEnds=$(TZ=$timezone date -d "$VAR1 days $VAR2 hours $VAR3 minutes $VAR4 seconds" +"%m/%d/%Y %H:%M")
            fi
            epochEnds=$(echo \"$epochEnds\")
-           voteElapsed=$(echo "scale=4; $pctEpochElapsed / 100 * 432000" | bc)
+           voteElapsed=$(echo "scale=4; $pctEpochElapsed / 100 * 6912000" | bc)
            pctVote=$(echo "scale=4; $validatorCreditsCurrent/$voteElapsed * 100" | bc)
            logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,pctVote=$pctVote,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\""
         fi
