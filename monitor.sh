@@ -42,6 +42,8 @@ else
    if [ -n "$installDir" ]; then cli="${installDir}/solana"; else echo "please configure the cli manually or check the configDir setting"; exit 1; fi
 fi
 
+if [ -z $identityPubkey ]; then identityPubkey=$($cli address); fi
+
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
    if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4,identityAccount=\"$identityPubkey\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
