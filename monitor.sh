@@ -45,7 +45,7 @@ fi
 
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
-   if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
+   if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4,identityAccount=\"$identityPubkey\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
    rpcURL="http://127.0.0.1:$rpcPort"
 fi
 
@@ -61,11 +61,12 @@ validatorBalance=$($cli balance $identityPubkey | grep -o '[0-9.]*')
 validatorVoteBalance=$($cli balance $voteAccount | grep -o '[0-9.]*')
 solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
 openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
-validatorCheck=$($cli validators --url $rpcURL)
+validatorCheck=$($cli validators --url $rpcURL --sort=credits -r -n)
 
 
 
 if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator not found in set"; exit 1; fi
+    topCredits=$(echo "$validatorCheck" | awk -v pubkey="$identityPubkey" '$0 ~ pubkey { print $1 }')
     blockProduction=$($cli block-production --url $rpcURL --output json-compact 2>&- | grep -v Note:)
     validatorBlockProduction=$(jq -r '.leaders[] | select(.identityPubkey == '\"$identityPubkey\"')' <<<$blockProduction)
     validators=$($cli validators --url $rpcURL --output json-compact 2>&-)
@@ -144,12 +145,12 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            epochEnds=$(echo \"$epochEnds\")
            voteElapsed=$(echo "scale=4; $pctEpochElapsed / 100 * 6912000" | bc)
            pctVote=$(echo "scale=4; $validatorCreditsCurrent/$voteElapsed * 100" | bc)
-           logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,pctVote=$pctVote,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\""
+           logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,pctVote=$pctVote,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",topCredits=$topCredits,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\""
         fi
         logentry="nodemonitor,pubkey=$identityPubkey status=$status,$logentry $now"
     else
         status=2
-        logentry="nodemonitor,pubkey=$identityPubkey status=$status,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"
+        logentry="nodemonitor,pubkey=$identityPubkey status=$status,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",topCredits=$topCredits,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"
     fi
 	
 
