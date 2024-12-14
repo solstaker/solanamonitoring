@@ -20,7 +20,6 @@ now=$(date +%s%N)      # date in influx format
 timezone=""            # time zone for epoch ends metric
 ip_address=$(wget -q -4 -O- http://icanhazip.com) 
 cpu=$(lscpu | grep "Model name:" | cut -c 12- |  sed 's/^ *//g')
-current_epoch=$(solana epoch)
 #####  END CONFIG  ##################################################################################################
 
 ################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
@@ -57,8 +56,8 @@ if [ "$noVoting" -eq 0 ]; then
    if [ -z $voteAccount ]; then echo "please configure the vote account in the script or wait for availability upon starting the node"; exit 1; fi
 fi
 
-validatorBalance=$($cli balance $identityPubkey | grep -o '[0-9.]*')
-validatorVoteBalance=$($cli balance $voteAccount | grep -o '[0-9.]*')
+validatorBalance=$($cli balance --url $rpcURL $identityPubkey | grep -o '[0-9.]*')
+validatorVoteBalance=$($cli balance --url $rpcURL $voteAccount | grep -o '[0-9.]*')
 solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
 openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
 validatorCheck=$($cli validators --url $rpcURL --sort=credits -r -n)
@@ -124,8 +123,8 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            epochInfo=$($cli epoch-info --url $rpcURL --output json-compact)
            epoch=$(jq -r '.epoch' <<<$epochInfo)
            pctEpochElapsed=$(echo "scale=2 ; 100 * $(jq -r '.slotIndex' <<<$epochInfo) / $(jq -r '.slotsInEpoch' <<<$epochInfo)" | bc)
-           validatorCreditsCurrent=$($cli vote-account $voteAccount | grep credits/slots | cut -d ":" -f 2 | cut -d "/" -f 1 | awk 'NR==1{print $1}')
-           TIME=$($cli epoch-info | grep "Epoch Completed Time" | cut -d "(" -f 2 | awk '{print $1,$2,$3,$4}')
+           validatorCreditsCurrent=$($cli vote-account --url $rpcURL $voteAccount | grep credits/slots | cut -d ":" -f 2 | cut -d "/" -f 1 | awk 'NR==1{print $1}')
+           TIME=$($cli epoch-info --url $rpcURL | grep "Epoch Completed Time" | cut -d "(" -f 2 | awk '{print $1,$2,$3,$4}')
            VAR1=$(echo $TIME | awk '{print $1}' | grep -o -E '[0-9]+')
            VAR2=$(echo $TIME | awk '{print $2}' | grep -o -E '[0-9]+')
            VAR3=$(echo $TIME | awk '{print $3}' | grep -o -E '[0-9]+')
