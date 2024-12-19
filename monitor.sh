@@ -18,9 +18,13 @@ rpcURL=""             # default is localhost with port number autodiscovered, al
 format="SOL"           # amounts shown in 'SOL' instead of lamports
 now=$(date +%s%N)      # date in influx format
 timezone=""            # time zone for epoch ends metric
+#####  END CONFIG  ##################################################################################################
+
 ip_address=$(wget -q -4 -O- http://icanhazip.com) 
 cpu=$(lscpu | grep "Model name:" | cut -c 12- |  sed 's/^ *//g')
-#####  END CONFIG  ##################################################################################################
+solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
+openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
+
 
 ################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
 networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
@@ -44,9 +48,17 @@ fi
 
 if [ -z $identityPubkey ]; then identityPubkey=$($cli address); fi
 
+reserve_novoting() {
+    #echo "please configure the vote account in the script or wait for availability upon starting the node"
+    status=5 #status 0=validating 1=up 2=error 3=delinquent 4=stopped 5=no_voting
+    logentry="nodemonitor status=$status,openFiles=$openfiles,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"
+    echo $logentry
+    exit 0
+}
+
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
-   if [ -z $rpcPort ]; then echo "nodemonitor,pubkey=$identityPubkey status=4,identityAccount=\"$identityPubkey\",network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
+   if [ -z $rpcPort ]; then echo "nodemonitor status=4,openFiles=$openfiles,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
    rpcURL="http://127.0.0.1:$rpcPort"
 fi
 
@@ -55,16 +67,12 @@ if [ "$noVoting" -eq 0 ]; then
    if [ -z $identityPubkey ]; then identityPubkey=$($cli address --url $rpcURL); fi
    if [ -z $identityPubkey ]; then echo "auto-detection failed, please configure the identityPubkey in the script if not done"; exit 1; fi
    if [ -z $voteAccount ]; then voteAccount=$($cli validators --url $rpcURL --output json-compact | jq -r 'first (.validators[] | select(.identityPubkey == '\"$identityPubkey\"')) | .voteAccountPubkey'); fi
-   if [ -z $voteAccount ]; then echo "please configure the vote account in the script or wait for availability upon starting the node"; exit 1; fi
+   if [ -z $voteAccount ]; then reserve_novoting; fi
 fi
 
+validatorCheck=$($cli validators --url $rpcURL --sort=credits -r -n)
 validatorBalance=$($cli balance --url $rpcURL $identityPubkey | grep -o '[0-9.]*')
 validatorVoteBalance=$($cli balance --url $rpcURL $voteAccount | grep -o '[0-9.]*')
-solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
-openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
-validatorCheck=$($cli validators --url $rpcURL --sort=credits -r -n)
-
-
 
 if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator not found in set"; exit 1; fi
     topCredits=$(echo "$validatorCheck" | awk -v pubkey="$identityPubkey" '$0 ~ pubkey { print $1 }')
@@ -125,7 +133,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            epochInfo=$($cli epoch-info --url $rpcURL --output json-compact)
            epoch=$(jq -r '.epoch' <<<$epochInfo)
            pctEpochElapsed=$(echo "scale=2 ; 100 * $(jq -r '.slotIndex' <<<$epochInfo) / $(jq -r '.slotsInEpoch' <<<$epochInfo)" | bc)
-           validatorCreditsCurrent=$($cli vote-account --url $rpcURL $voteAccount | grep credits/slots | cut -d ":" -f 2 | cut -d "/" -f 1 | awk 'NR==1{print $1}')
+           validatorCreditsCurrent=$($cli vote-account --url $rpcURL $voteAccount | grep 'credits/max credits' | cut -d ":" -f 2 | cut -d "/" -f 1 | awk 'NR==1{print $1}')
            TIME=$($cli epoch-info --url $rpcURL | grep "Epoch Completed Time" | cut -d "(" -f 2 | awk '{print $1,$2,$3,$4}')
            VAR1=$(echo $TIME | awk '{print $1}' | grep -o -E '[0-9]+')
            VAR2=$(echo $TIME | awk '{print $2}' | grep -o -E '[0-9]+')
@@ -151,7 +159,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
         logentry="nodemonitor,pubkey=$identityPubkey status=$status,$logentry $now"
     else
         status=2
-        logentry="nodemonitor,pubkey=$identityPubkey status=$status,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",topCredits=$topCredits,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"
+        logentry="nodemonitor,pubkey=$identityPubkey status=$status,openFiles=$openfiles,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"
     fi
 	
 
