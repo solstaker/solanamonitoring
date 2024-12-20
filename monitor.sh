@@ -28,14 +28,13 @@ openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
 
 ################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
 networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
-if [ "$networkrpcURL" == "" ]; then networkrpcURL=$(cat /root/.config/solana/cli/config.yml | grep json_rpc_url | awk '{ print $2 }')
-fi
+if [ "$networkrpcURL" == "" ]; then networkrpcURL=$(cat /root/.config/solana/cli/config.yml | grep json_rpc_url | awk '{ print $2 }'); fi
 networkrpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
 if [ $networkrpcURL = https://api.testnet.solana.com ]; then network=1 networkname=testnet;
 elif [ $networkrpcURL = https://api.mainnet-beta.solana.com ]; then network=2 networkname=mainnet;
 elif [ $networkrpcURL = https://api.devnet.solana.com ]; then network=3 networkname=devnet;
 elif [ $networkrpcURL = http://localhost:$networkrpcPort ]; then network=0 networkname=localhost;
-fi	
+else network=4 networkname=unknown; fi	
 ######################################################################################################
 
 if [ -n  "$binDir" ]; then
@@ -56,6 +55,28 @@ reserve_novoting() {
     exit 0
 }
 
+function durationToSeconds () {
+  set -f
+  normalize () { echo $1 | tr '[:upper:]' '[:lower:]' | tr -d "\"\\\'" | sed 's/years\{0,1\}/y/g; s/months\{0,1\}/m/g; s/days\{0,1\}/d/g; s/hours\{0,1\}/h/g; s/minutes\{0,1\}/m/g; s/min/m/g; s/seconds\{0,1\}/s/g; s/sec/s/g;  s/ //g;'; }
+  local value=$(normalize "$1")
+  local fallback=$(normalize "$2")
+
+  echo $value | grep -v '^[-+*/0-9ydhms]\{0,30\}$' > /dev/null 2>&1
+  if [ $? -eq 0 ]
+  then
+    >&2 echo Invalid duration pattern \"$value\"
+  else
+    if [ "$value" = "" ]; then
+      [ "$fallback" != "" ] && durationToSeconds "$fallback"
+    else
+      sedtmpl () { echo "s/\([0-9]\+\)$1/(0\1 * $2)/g;"; }
+      local template="$(sedtmpl '\( \|$\)' 1) $(sedtmpl y '365 * 86400') $(sedtmpl d 86400) $(sedtmpl h 3600) $(sedtmpl m 60) $(sedtmpl s 1) s/) *(/) + (/g;"
+      echo $value | sed "$template" | bc
+    fi
+  fi
+  set +f
+}
+
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
    if [ -z $rpcPort ]; then echo "nodemonitor status=4,openFiles=$openfiles,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
@@ -73,9 +94,14 @@ fi
 validatorCheck=$($cli validators --url $rpcURL --sort=credits -r -n)
 validatorBalance=$($cli balance --url $rpcURL $identityPubkey | grep -o '[0-9.]*')
 validatorVoteBalance=$($cli balance --url $rpcURL $voteAccount | grep -o '[0-9.]*')
+jitoCommission=$(ps aux | grep agave-validator | grep -o -- '--commission-bps [0-9]*' | awk '{print $2/100}')
+if [ -z $jitoCommission ]; then jitoCommission=100; fi
+
 
 if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator not found in set"; exit 1; fi
     topCredits=$(echo "$validatorCheck" | awk -v pubkey="$identityPubkey" '$0 ~ pubkey { print $1 }')
+    validatorSchedule=$($cli leader-schedule --url $rpcURL | grep $identityPubkey)
+    totalSlots=$(echo "$validatorSchedule" | wc -l)
     blockProduction=$($cli block-production --url $rpcURL --output json-compact 2>&- | grep -v Note:)
     validatorBlockProduction=$(jq -r '.leaders[] | select(.identityPubkey == '\"$identityPubkey\"')' <<<$blockProduction)
     validators=$($cli validators --url $rpcURL --output json-compact 2>&-)
@@ -93,7 +119,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
               credits=$(jq -r '.credits' <<<$delinquentValidatorInfo)
               version=$(jq -r '.version' <<<$delinquentValidatorInfo | sed 's/ /-/g')
               commission=$(jq -r '.commission' <<<$delinquentValidatorInfo)
-              logentry="rootSlot=$(jq -r '.rootSlot' <<<$delinquentValidatorInfo),lastVote=$(jq -r '.lastVote' <<<$delinquentValidatorInfo),credits=$credits,activatedStake=$activatedStake,version=\"$version\",commission=$commission"
+              logentry="rootSlot=$(jq -r '.rootSlot' <<<$delinquentValidatorInfo),lastVote=$(jq -r '.lastVote' <<<$delinquentValidatorInfo),credits=$credits,activatedStake=$activatedStake,version=\"$version\",commission=$commission,jitoCommission=$jitoCommission"
         elif [ -n "$currentValidatorInfo" ]; then
               status=0
               activatedStake=$(jq -r '.activatedStake' <<<$currentValidatorInfo)
@@ -125,16 +151,27 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
               totalCurrentStake=$(jq -r '.totalCurrentStake' <<<$validators)
               pctVersionActive=$(echo "scale=2 ; 100 * $versionActiveStake / $totalCurrentStake" | bc)
               pctNewerVersions=$(echo "scale=2 ; 100 * $stakeNewerVersions / $totalCurrentStake" | bc)
-              logentry="$logentry,leaderSlots=$leaderSlots,skippedSlots=$skippedSlots,pctSkipped=$pctSkipped,pctTotSkipped=$pctTotSkipped,pctSkippedDelta=$pctSkippedDelta,pctTotDelinquent=$pctTotDelinquent"
-              logentry="$logentry,version=\"$version\",pctNewerVersions=$pctNewerVersions,commission=$commission,activatedStake=$activatedStake,credits=$credits,solanaPrice=$solanaPrice"
+              logentry="$logentry,totalSlots=$totalSlots,leaderSlots=$leaderSlots,skippedSlots=$skippedSlots,pctSkipped=$pctSkipped,pctTotSkipped=$pctTotSkipped,pctSkippedDelta=$pctSkippedDelta,pctTotDelinquent=$pctTotDelinquent"
+              logentry="$logentry,version=\"$version\",pctNewerVersions=$pctNewerVersions,commission=$commission,jitoCommission=$jitoCommission,activatedStake=$activatedStake,credits=$credits,solanaPrice=$solanaPrice"
            else status=2; fi
         if [ "$additionalInfo" == "on" ]; then
            nodes=$($cli gossip --url $rpcURL | grep -Po "Nodes:\s+\K[0-9]+")
            epochInfo=$($cli epoch-info --url $rpcURL --output json-compact)
            epoch=$(jq -r '.epoch' <<<$epochInfo)
            pctEpochElapsed=$(echo "scale=2 ; 100 * $(jq -r '.slotIndex' <<<$epochInfo) / $(jq -r '.slotsInEpoch' <<<$epochInfo)" | bc)
-           validatorCreditsCurrent=$($cli vote-account --url $rpcURL $voteAccount | grep 'credits/max credits' | cut -d ":" -f 2 | cut -d "/" -f 1 | awk 'NR==1{print $1}')
-           TIME=$($cli epoch-info --url $rpcURL | grep "Epoch Completed Time" | cut -d "(" -f 2 | awk '{print $1,$2,$3,$4}')
+           validatorCreditsCurrent=$($cli vote-account --url $rpcURL $voteAccount | grep 'credits/max credits' | cut -d ":" -f 2 | cut -d "/" -f 1 | awk 'NR==1{print $1}')           
+           EPOCH_INFO=$($cli epoch-info --url $rpcURL)
+           FIRST_SLOT=`echo -e "$EPOCH_INFO" | grep "Epoch Slot Range: " | cut -d '[' -f 2 | cut -d '.' -f 1`
+           LAST_SLOT=`echo -e "$EPOCH_INFO" | grep "Epoch Slot Range: " | cut -d '[' -f 2 | cut -d '.' -f 3 | cut -d ')' -f 1`
+           CURRENT_SLOT=`echo -e "$EPOCH_INFO" | grep "Slot: " | cut -d ':' -f 2 | cut -d ' ' -f 2`
+           EPOCH_LEN_TEXT=`echo -e "$EPOCH_INFO" | grep "Completed Time" | cut -d '/' -f 2 | cut -d '(' -f 1`
+           EPOCH_LEN_SEC=$(durationToSeconds "${EPOCH_LEN_TEXT}")
+           SLOT_LEN_SEC=`echo "scale=10; ${EPOCH_LEN_SEC}/(${LAST_SLOT}-${FIRST_SLOT})" | bc`
+           SLOT_PER_SEC=`echo "scale=10; 1.0/${SLOT_LEN_SEC}" | bc`
+           NEXT_SLOT=$(awk -v var=$CURRENT_SLOT '$1>=var' <(echo "$validatorSchedule") | head -n1 | cut -d ' ' -f3)
+           LEFT_SLOTS=$((NEXT_SLOT-CURRENT_SLOT))
+           leftToSlot=$(echo "scale=0; $LEFT_SLOTS * $SLOT_LEN_SEC" | bc | awk '{print int($1)}')           
+           TIME=$(echo $EPOCH_INFO | grep "Epoch Completed Time" | cut -d "(" -f 2 | awk '{print $1,$2,$3,$4}')
            VAR1=$(echo $TIME | awk '{print $1}' | grep -o -E '[0-9]+')
            VAR2=$(echo $TIME | awk '{print $2}' | grep -o -E '[0-9]+')
            VAR3=$(echo $TIME | awk '{print $3}' | grep -o -E '[0-9]+')
@@ -154,7 +191,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            epochEnds=$(echo \"$epochEnds\")
            voteElapsed=$(echo "scale=4; $pctEpochElapsed / 100 * 6912000" | bc)
            pctVote=$(echo "scale=4; $validatorCreditsCurrent/$voteElapsed * 100" | bc)
-           logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,pctVote=$pctVote,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",topCredits=$topCredits,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\""
+           logentry="$logentry,openFiles=$openfiles,validatorBalance=$validatorBalance,validatorVoteBalance=$validatorVoteBalance,nodes=$nodes,epoch=$epoch,pctEpochElapsed=$pctEpochElapsed,validatorCreditsCurrent=$validatorCreditsCurrent,epochEnds=$epochEnds,slotSpeed=$SLOT_PER_SEC,slotTime=$SLOT_LEN_SEC,leftToSlot=$leftToSlot,pctVote=$pctVote,identityAccount=\"$identityPubkey\",voteAccount=\"$voteAccount\",topCredits=$topCredits,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\""
         fi
         logentry="nodemonitor,pubkey=$identityPubkey status=$status,$logentry $now"
     else
