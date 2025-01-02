@@ -169,6 +169,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
            SLOT_LEN_SEC=`echo "scale=10; ${EPOCH_LEN_SEC}/(${LAST_SLOT}-${FIRST_SLOT})" | bc`
            SLOT_PER_SEC=`echo "scale=10; 1.0/${SLOT_LEN_SEC}" | bc`
            NEXT_SLOT=$(awk -v var=$CURRENT_SLOT '$1>=var' <(echo "$validatorSchedule") | head -n1 | cut -d ' ' -f3)
+	   if [ -z "$NEXT_SLOT" ]; then NEXT_SLOT=$(awk -v var=$CURRENT_SLOT '$1<=var' <(echo "$validatorSchedule") | tail -n1 | cut -d ' ' -f3) ;fi
            LEFT_SLOTS=$((NEXT_SLOT-CURRENT_SLOT))
            leftToSlot=$(echo "scale=0; $LEFT_SLOTS * $SLOT_LEN_SEC" | bc | awk '{print int($1)}')           
            TIME=$(echo $EPOCH_INFO | grep "Epoch Completed Time" | cut -d "(" -f 2 | awk '{print $1,$2,$3,$4}')
