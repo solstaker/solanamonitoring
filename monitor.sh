@@ -77,9 +77,13 @@ function durationToSeconds () {
 
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
-   if [ -z $rpcURL ]; then ### add firedancer
+   if [ -z $rpcPort ]; then ### add firedancer
    config_path=$(ps aux | grep -v grep | grep 'fdctl run --config ' | sed -E 's/.*--config +([^[:space:]]+).*/\1/' | head -n 1)
+   if [ -z $config_path ]; then
+   rpcPort=""
+   else
    rpcPort=$(awk '/^\[rpc\]/ {in_rpc=1; next} /^\[/ && !/^\[rpc\]/ {in_rpc=0} in_rpc && $1=="port" {gsub(/[^0-9]/, "", $3); print $3; exit}' "$config_path")
+   fi
    fi
    if [ -z $rpcPort ]; then echo "nodemonitor status=4,openFiles=$openfiles,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
    rpcURL="http://127.0.0.1:$rpcPort"
