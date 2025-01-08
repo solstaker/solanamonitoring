@@ -26,14 +26,12 @@ solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
 openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
 
 
-################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet,0=localhost)#########################
+################# Added cluster network to grafana (1=testnet,2=mainnet,3=devnet)#########################
 networkrpcURL=$(cat $configDir/cli/config.yml | grep json_rpc_url | grep -o '".*"' | tr -d '"')
 if [ "$networkrpcURL" == "" ]; then networkrpcURL=$(cat /root/.config/solana/cli/config.yml | grep json_rpc_url | awk '{ print $2 }'); fi
-networkrpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
 if [ $networkrpcURL = https://api.testnet.solana.com ]; then network=1 networkname=testnet;
 elif [ $networkrpcURL = https://api.mainnet-beta.solana.com ]; then network=2 networkname=mainnet;
 elif [ $networkrpcURL = https://api.devnet.solana.com ]; then network=3 networkname=devnet;
-elif [ $networkrpcURL = http://localhost:$networkrpcPort ]; then network=0 networkname=localhost;
 else network=4 networkname=unknown; fi	
 ######################################################################################################
 
@@ -79,6 +77,10 @@ function durationToSeconds () {
 
 if [ -z $rpcURL ]; then
    rpcPort=$(ps aux | grep agave-validator | grep -Po "\-\-rpc\-port\s+\K[0-9]+")
+   if [ -z $rpcURL ]; then ### add firedancer
+   config_path=$(ps aux | grep -v grep | grep 'fdctl run --config ' | sed -E 's/.*--config +([^[:space:]]+).*/\1/' | head -n 1)
+   rpcPort=$(awk '/^\[rpc\]/ {in_rpc=1; next} /^\[/ && !/^\[rpc\]/ {in_rpc=0} in_rpc && $1=="port" {gsub(/[^0-9]/, "", $3); print $3; exit}' "$config_path")
+   fi
    if [ -z $rpcPort ]; then echo "nodemonitor status=4,openFiles=$openfiles,network=$network,networkname=\"$networkname\",ip_address=\"$ip_address\",model_cpu=\"$cpu\" $now"; exit 1; fi
    rpcURL="http://127.0.0.1:$rpcPort"
 fi
