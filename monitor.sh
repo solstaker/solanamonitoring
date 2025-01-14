@@ -108,6 +108,7 @@ if [ $(grep -c $voteAccount <<< $validatorCheck) == 0  ]; then echo "validator n
     topCredits=$(echo "$validatorCheck" | awk -v pubkey="$identityPubkey" '$0 ~ pubkey { print $1 }')
     validatorSchedule=$($cli leader-schedule --url $rpcURL | grep $identityPubkey)
     totalSlots=$(echo "$validatorSchedule" | wc -l)
+    if [ $totalSlots == "1" ];then totalSlots=0 ;fi
     blockProduction=$($cli block-production --url $rpcURL --output json-compact 2>&- | grep -v Note:)
     validatorBlockProduction=$(jq -r '.leaders[] | select(.identityPubkey == '\"$identityPubkey\"')' <<<$blockProduction)
     validators=$($cli validators --url $rpcURL --output json-compact 2>&-)
