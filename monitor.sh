@@ -21,7 +21,7 @@ timezone=""            # time zone for epoch ends metric
 #####  END CONFIG  ##################################################################################################
 
 ip_address=$(wget -q -4 -O- http://icanhazip.com) 
-cpu=$(lscpu | grep "Model name:" | cut -c 12- |  sed 's/^ *//g')
+cpu=$(lscpu | grep "Model name:" | head -n 1 | cut -c 12- |  sed 's/^ *//g')
 solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
 openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
 
