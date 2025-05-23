@@ -20,7 +20,7 @@ now=$(date +%s%N)      # date in influx format
 timezone=""            # time zone for epoch ends metric
 #####  END CONFIG  ##################################################################################################
 
-ip_address=$(wget -q -4 -O- http://icanhazip.com) 
+ip_address=$(ip route get 1 | awk '{print $7; exit}') 
 cpu=$(lscpu | grep "Model name:" | head -n 1 | cut -c 12- |  sed 's/^ *//g')
 solanaPrice=$(curl -s 'https://api.margus.one/solana/price/'| jq -r .price)
 openfiles=$(cat /proc/sys/fs/file-nr | awk '{ print $1 }')
