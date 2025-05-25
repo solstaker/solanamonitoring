@@ -9,12 +9,11 @@ import subprocess
 import glob
 import time
 
+# Load environment variables from .env file
+load_dotenv()
 
 DEBUG = int(os.getenv("DEBUG", "0"))
 INTERVAL = int(os.getenv("INTERVAL", "600"))
-
-# Load environment variables from .env file
-load_dotenv()
 
 # Telegram bot settings (from environment)
 BOT_API_TOKEN     = os.getenv('BOT_API_TOKEN')
