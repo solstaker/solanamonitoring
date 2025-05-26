@@ -26,11 +26,11 @@ except ValueError:
 # Thresholds
 
 DISK_THRESHOLD         = int(os.getenv("DISK_THRESHOLD", "50"))                # % usage for NVMe alerts     
-RAM_FREE_THRESHOLD     = int(os.getenv("RAM_FREE_THRESHOLD", "5"))             # % free RAM                  
-RAMDISK_FREE_THRESHOLD = int(os.getenv("RAMDISK_FREE_THRESHOLD", "6"))         # % free ramdisk              
+RAM_FREE_THRESHOLD     = int(os.getenv("RAM_FREE_THRESHOLD", "8"))             # % free RAM                  
+RAMDISK_FREE_THRESHOLD = int(os.getenv("RAMDISK_FREE_THRESHOLD", "8"))         # % free ramdisk              
 IO_WAIT_THRESHOLD      = int(os.getenv("IO_WAIT_THRESHOLD", "4"))              # % IO wait alerts            
 SWAP_THRESHOLD         = int(os.getenv("SWAP_THRESHOLD", "10"))                # % swap usage alerts         
-CPU_TEMP_CRIT          = int(os.getenv("CPU_TEMP_CRIT", "85"))                 # �C critical CPU temp alerts 
+CPU_TEMP_CRIT          = int(os.getenv("CPU_TEMP_CRIT", "90"))                 # �C critical CPU temp alerts 
 NVME_TEMP_CRIT         = int(os.getenv("NVME_TEMP_CRIT", "60"))                # �C critical NVMe temp alerts
 
 TELEGRAF_CONF = '/etc/telegraf/telegraf.conf'
